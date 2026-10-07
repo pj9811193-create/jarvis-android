@@ -51,6 +51,11 @@ The rule this enforces:
 | **SecureStore** | `security/SecureStore.kt` | **Keystore-encrypted credential storage** |
 | **UI** | `ui/MainActivity.kt` | wiring only |
 | **Settings** | `ui/SettingsActivity.kt` | AI · Voice · Resolver · Permissions · About |
+| **JarvisCore** | `core/JarvisCore.kt` | the shared pipeline — used by the UI *and* the service |
+| **JarvisService** | `service/JarvisService.kt` | foreground mic service, wake word, listening loop |
+| **BootReceiver** | `service/BootReceiver.kt` | tap-to-resume notification after a reboot |
+| **Caller** | `device/Caller.kt` | place a call from a number or a contact name |
+| **WakeWord** | `nlp/WakeWord.kt` | wake-word matching |
 
 Adding a capability means adding a module; the AI core and the UI don't change.
 
@@ -96,6 +101,40 @@ JARVIS Settings
 ```
 
 Open it with the **Settings** button on the main screen.
+
+---
+
+## 24/7 background listening — what Android actually allows
+
+The OS, not this code, draws the line here. What is and isn't possible:
+
+| Wanted | Reality |
+|---|---|
+| Keep listening after you swipe the app away | **Yes** — a foreground service with `foregroundServiceType="microphone"` plus a persistent notification. This is the only supported mechanism. |
+| Keep listening with the notification hidden | **No** — the microphone is tied to the foreground service. Hide it and the mic is revoked. |
+| Auto-start listening at boot | **No** — Android 12+ forbids starting a microphone service from the background. `BootReceiver` posts a *tap-to-resume* notification instead of silently starting. |
+| Survive aggressive battery managers | **Partly** — the app requests exemption from battery optimisation, but some OEMs (Xiaomi, Oppo, Vivo, Samsung) also need the app whitelisted in their own settings. |
+| Use the mic from the background without a service | **No** — Android 11+ blocks this outright. |
+
+So **closing JARVIS from Recents does not stop it** — the foreground service keeps
+running with its notification. A reboot or a force-stop does, and that is by design.
+
+**Wake-word model.** The system recogniser is not a wake-word engine, so the
+service runs short recognition sessions in a loop and only acts when the
+transcript contains "Jarvis". That keeps false positives and battery drain down.
+A dedicated on-device wake-word model (e.g. Picovoice Porcupine) is the upgrade
+path if you want true "say it from silence".
+
+## Calling
+
+Say **"call 9876543210"** or **"call mom"**.
+
+- With `CALL_PHONE` granted, it rings directly (`ACTION_CALL`).
+- Without it, it opens the dialer prefilled (`ACTION_DIAL`).
+- A spoken *name* is resolved through your contacts (`READ_CONTACTS`).
+- Android 10+ blocks starting an activity from the background, so a call asked
+  for by the background service may be refused — JARVIS says so rather than
+  pretending it worked.
 
 ---
 
@@ -181,7 +220,13 @@ Built and verified with a real Android toolchain:
 BUILD SUCCESSFUL
 app/build/outputs/apk/debug/app-debug.apk   5.5 MB
 package ai.jarvis · minSdk 24 · targetSdk 34 · compileSdk 34
-permissions: RECORD_AUDIO, INTERNET   (no QUERY_ALL_PACKAGES)
+permissions: RECORD_AUDIO, INTERNET, CALL_PHONE, READ_CONTACTS,
+             FOREGROUND_SERVICE, FOREGROUND_SERVICE_MICROPHONE,
+             POST_NOTIFICATIONS, WAKE_LOCK, RECEIVE_BOOT_COMPLETED,
+             REQUEST_IGNORE_BATTERY_OPTIMIZATIONS
+             (no QUERY_ALL_PACKAGES)
+service: ai.jarvis.service.JarvisService  foregroundServiceType=0x80 (microphone)
+receiver: ai.jarvis.service.BootReceiver  BOOT_COMPLETED
 signed with the Android debug certificate
 ```
 

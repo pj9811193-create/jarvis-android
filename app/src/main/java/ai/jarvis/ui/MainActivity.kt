@@ -4,25 +4,22 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.os.PowerManager
+import android.provider.Settings
 import android.widget.Button
 import android.widget.EditText
 import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import ai.jarvis.R
-import ai.jarvis.actions.ActionRegistry
-import ai.jarvis.ai.AIEngine
-import ai.jarvis.apps.AppLauncher
-import ai.jarvis.apps.AppResolver
-import ai.jarvis.apps.InstalledApp
-import ai.jarvis.device.DeviceTools
-import ai.jarvis.memory.Memory
-import ai.jarvis.nlp.DeviceCommand
-import ai.jarvis.nlp.IntentParser
+import ai.jarvis.core.JarvisCore
+import ai.jarvis.service.JarvisService
 import ai.jarvis.voice.VoiceEngine
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,15 +27,8 @@ import kotlinx.coroutines.withContext
 
 /**
  * ============================  UI  ============================
- * Wires the modules together and enforces the trust chain:
- *
- *   text → IntentParser / AI.classify   (intent + target PHRASE)
- *        → AppResolver                   (installed inventory → package)
- *        → AppResolver.verify            (package really exists?)
- *        → ActionRegistry → AppLauncher  (OS)
- *
- * The AI can never hand a package name to the launcher. It either classifies
- * an intent, or picks a NUMBER from a list the resolver already verified.
+ * Thin wrapper over JarvisCore (which the background service shares) plus the
+ * controls for permissions and 24/7 background listening.
  * =============================================================
  */
 class MainActivity : AppCompatActivity() {
@@ -46,20 +36,22 @@ class MainActivity : AppCompatActivity() {
     private lateinit var log: TextView
     private lateinit var input: EditText
     private lateinit var scroll: ScrollView
+    private lateinit var bgStatus: TextView
 
-    private lateinit var resolver: AppResolver
-    private lateinit var launcher: AppLauncher
-    private lateinit var actions: ActionRegistry
-    private lateinit var memory: Memory
-    private lateinit var parser: IntentParser
-    private lateinit var device: DeviceTools
-    private lateinit var ai: AIEngine
+    private lateinit var core: JarvisCore
     private var voice: VoiceEngine? = null
 
     private val micPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
             if (granted) startListening()
             else append("JARVIS: I need microphone permission for voice input.")
+        }
+
+    private val bgPermissions =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val mic = result[Manifest.permission.RECORD_AUDIO]
+                ?: has(Manifest.permission.RECORD_AUDIO)
+            if (mic) launchService() else append("JARVIS: ${getString(R.string.bg_need_mic)}")
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,14 +61,9 @@ class MainActivity : AppCompatActivity() {
         log = findViewById(R.id.log)
         input = findViewById(R.id.input)
         scroll = findViewById(R.id.scroll)
+        bgStatus = findViewById(R.id.bg_status)
 
-        resolver = AppResolver(this)
-        launcher = AppLauncher(this)
-        actions = ActionRegistry(launcher)
-        memory = Memory(this)
-        parser = IntentParser()
-        device = DeviceTools(this)
-        ai = AIEngine(memory)
+        core = JarvisCore(this)
 
         voice = VoiceEngine(
             context = this,
@@ -92,28 +79,41 @@ class MainActivity : AppCompatActivity() {
             }
         }
         findViewById<Button>(R.id.mic).setOnClickListener {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO)
-                == PackageManager.PERMISSION_GRANTED
-            ) startListening() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+            if (has(Manifest.permission.RECORD_AUDIO)) startListening()
+            else micPermission.launch(Manifest.permission.RECORD_AUDIO)
         }
         findViewById<Button>(R.id.refresh).setOnClickListener { rescan() }
         findViewById<Button>(R.id.settings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        findViewById<Button>(R.id.bg_start).setOnClickListener { requestBackground() }
+        findViewById<Button>(R.id.bg_stop).setOnClickListener { stopBackground() }
 
         append("JARVIS: Online. I can see the apps installed on this device.")
         rescan()
+        updateBgStatus()
     }
 
     override fun onResume() {
         super.onResume()
-        // Settings may have changed the voice; re-apply on the way back.
-        voice?.applySettings(memory.ttsSpeed(), memory.voiceName(), memory.recognitionLang())
+        voice?.applySettings(core.memory.ttsSpeed(), core.memory.voiceName(), core.memory.recognitionLang())
+        updateBgStatus()
+    }
+
+    // ---------------- pipeline ----------------
+
+    private fun runCommand(text: String) {
+        append("You: $text")
+        lifecycleScope.launch {
+            val reply = core.handle(text)
+            append("JARVIS: $reply")
+            voice?.speak(reply)
+        }
     }
 
     private fun rescan() {
         lifecycleScope.launch {
-            val n = withContext(Dispatchers.IO) { resolver.refresh().size }
+            val n = withContext(Dispatchers.IO) { core.rescan() }
             append("JARVIS: Indexed $n launchable apps on this device.")
         }
     }
@@ -123,116 +123,74 @@ class MainActivity : AppCompatActivity() {
         voice?.listen()
     }
 
-    private fun runCommand(text: String) {
-        append("You: $text")
-        lifecycleScope.launch {
-            val reply = handle(text)
-            append("JARVIS: $reply")
-            voice?.speak(reply)
-        }
+    // ---------------- background listening ----------------
+
+    private fun requestBackground() {
+        val needed = mutableListOf<String>()
+        if (!has(Manifest.permission.RECORD_AUDIO)) needed += Manifest.permission.RECORD_AUDIO
+        if (!has(Manifest.permission.CALL_PHONE)) needed += Manifest.permission.CALL_PHONE
+        if (!has(Manifest.permission.READ_CONTACTS)) needed += Manifest.permission.READ_CONTACTS
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            !has(Manifest.permission.POST_NOTIFICATIONS)
+        ) needed += Manifest.permission.POST_NOTIFICATIONS
+
+        if (needed.isEmpty()) launchService() else bgPermissions.launch(needed.toTypedArray())
     }
 
-    // ------------------------------------------------------------------
-    //  Pipeline
-    // ------------------------------------------------------------------
+    private fun launchService() {
+        core.memory.setBackgroundEnabled(true)
+        JarvisService.start(this)
+        append("JARVIS: Background listening on. Say \"Jarvis\" any time — even with the app closed.")
+        updateBgStatus()
+        promptBattery()
+    }
 
-    private suspend fun handle(text: String): String {
-        // 1) deterministic device verbs — no AI needed
-        parser.parse(text)?.let { return execute(it) }
+    private fun stopBackground() {
+        core.memory.setBackgroundEnabled(false)
+        JarvisService.stop(this)
+        append("JARVIS: Background listening off.")
+        updateBgStatus()
+    }
 
-        // 2) AI classifies intent + target PHRASE (never a package)
-        if (ai.isConfigured()) {
-            val intent = ai.classify(text)
-            if (intent != null && intent.action != "ANSWER" && intent.target.isNotBlank()) {
-                val cmd = when (intent.action) {
-                    "OPEN_APP" -> DeviceCommand.OpenApp(intent.target)
-                    "WEB_SEARCH" -> DeviceCommand.WebSearch(intent.target)
-                    "INSTALL_APP" -> DeviceCommand.InstallApp(intent.target)
-                    else -> null
+    private fun updateBgStatus() {
+        val on = core.memory.backgroundEnabled()
+        bgStatus.text = getString(if (on) R.string.bg_status_on else R.string.bg_status_off)
+    }
+
+    private fun promptBattery() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return
+        val pm = getSystemService(POWER_SERVICE) as PowerManager
+        if (pm.isIgnoringBatteryOptimizations(packageName)) return
+
+        AlertDialog.Builder(this)
+            .setTitle(R.string.bg_battery_title)
+            .setMessage(R.string.bg_battery)
+            .setPositiveButton(R.string.bg_allow) { _, _ ->
+                try {
+                    startActivity(
+                        Intent(
+                            Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                            Uri.parse("package:$packageName")
+                        )
+                    )
+                } catch (e: Exception) {
+                    openBatteryList()
                 }
-                if (cmd != null) return execute(cmd)
             }
-        }
-
-        // 3) offline device skills
-        device.answer(text)?.let { return it }
-
-        // 4) ordinary conversation
-        if (ai.isConfigured()) return ai.ask(text)
-        return "I don't have an AI key yet, so I can only open apps and handle basic device tasks."
+            .setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
-    private suspend fun execute(cmd: DeviceCommand): String = when (cmd) {
-        is DeviceCommand.OpenApp -> resolveAndLaunch(cmd.query)
-        is DeviceCommand.WebSearch -> {
-            launcher.openUri("https://www.google.com/search?q=" + Uri.encode(cmd.query))
-            "Searching the web for ${cmd.query}."
-        }
-        is DeviceCommand.InstallApp -> {
-            launcher.searchStore(cmd.query)
-            "Opening the app store for ${cmd.query}."
-        }
-        is DeviceCommand.OpenUrl -> {
-            launcher.openUri(cmd.url)
-            "Opening ${cmd.url}."
+    private fun openBatteryList() {
+        try {
+            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+        } catch (e: Exception) {
+            // nothing more we can do
         }
     }
 
-    /**
-     * The trust chain, in code:
-     *   memory alias  → VERIFY it still exists
-     *   resolver      → ranking over the real installed inventory
-     *   AI            → may only choose an INDEX from those candidates
-     *   verify again  → then, and only then, launch
-     */
-    private suspend fun resolveAndLaunch(target: String): String {
-        // 1) a learned alias, but never trusted blindly — verify it first
-        memory.lookup(target)?.let { pkg ->
-            val app = resolver.verify(pkg)
-            if (app != null && actions.perform(app)) return "Opening ${app.label}."
-            memory.forget(target)   // stale alias: the app is gone or changed
-        }
-
-        // 2) discovery + ranking against the real inventory
-        val threshold = memory.resolverThreshold()
-        return when (val res = withContext(Dispatchers.IO) { resolver.resolve(target, threshold) }) {
-
-            is AppResolver.Resolution.NotFound -> {
-                launcher.searchStore(target)
-                "Nothing installed matches \"$target\", so I'm opening the app store."
-            }
-
-            is AppResolver.Resolution.Resolved -> launchVerified(res.app, target)
-
-            is AppResolver.Resolution.Ambiguous -> {
-                // The AI may only pick from what we verified — by number.
-                var chosen = res.options.first().app
-                if (ai.isConfigured()) {
-                    when (val idx = ai.chooseCandidate(target, res.options.map { it.app.label })) {
-                        0 -> return "I couldn't find an installed app for \"$target\"."
-                        null -> Unit                       // AI failed; keep local best
-                        else -> chosen = res.options[idx - 1].app
-                    }
-                }
-                launchVerified(chosen, target)
-            }
-        }
-    }
-
-    /** Final gate: re-verify the package, then hand it to the ActionRegistry. */
-    private fun launchVerified(app: InstalledApp, target: String): String {
-        val verified = resolver.verify(app.packageName)
-            ?: return "That app isn't installed any more, so I'm opening the app store."
-
-        memory.remember(target, verified.packageName)
-
-        return if (actions.perform(verified)) {
-            "Opening ${verified.label}."
-        } else {
-            launcher.openStoreListing(verified.packageName)
-            "${verified.label} wouldn't launch, so I'm opening its store page."
-        }
-    }
+    private fun has(permission: String): Boolean =
+        ContextCompat.checkSelfPermission(this, permission) == PackageManager.PERMISSION_GRANTED
 
     private fun append(line: String) {
         log.append(line + "\n\n")

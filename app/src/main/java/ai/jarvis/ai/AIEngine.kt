@@ -132,11 +132,13 @@ class AIEngine(private val memory: Memory) {
             "Classify the user's request for an Android assistant. Reply with ONLY compact JSON, " +
                 "no prose, in this exact shape:\n" +
                 "{\"action\":\"OPEN_APP\",\"target\":\"video editor\"}\n" +
-                "action is one of: OPEN_APP, WEB_SEARCH, INSTALL_APP, ANSWER.\n" +
+                "action is one of: OPEN_APP, WEB_SEARCH, INSTALL_APP, CALL, ANSWER.\n" +
                 "Use OPEN_APP when the user wants to open/launch an app; target is the phrase they " +
                 "used to describe it (e.g. \"my video editor\", \"the app I use for coding\").\n" +
                 "Use WEB_SEARCH when they want to search the web (target = the query).\n" +
                 "Use INSTALL_APP when they want to install/download something.\n" +
+                "Use CALL when they want to phone someone; target is the phone number or the " +
+                "contact name they said (e.g. \"+91 98765 43210\", \"mom\").\n" +
                 "Use ANSWER for everything else (target = the question).\n" +
                 "NEVER output a package name — only a plain-language target."
 

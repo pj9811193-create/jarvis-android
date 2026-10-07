@@ -77,4 +77,25 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="4dp"
         android:text="@string/settings" />
+
+    <TextView
+        android:id="@+id/bg_status"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="10dp"
+        android:textSize="11sp"
+        android:textColor="#6D869B"
+        android:text="@string/bg_status_off" />
+
+    <Button
+        android:id="@+id/bg_start"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/bg_start" />
+
+    <Button
+        android:id="@+id/bg_stop"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="@string/bg_stop" />
 </LinearLayout>

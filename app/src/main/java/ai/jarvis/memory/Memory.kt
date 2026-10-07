@@ -55,6 +55,13 @@ class Memory(context: Context) {
     fun recognitionLang(): String = prefs.getString("asr_lang", "") ?: ""
     fun setRecognitionLang(v: String) = prefs.edit().putString("asr_lang", v).apply()
 
+    // ---------- background listening ----------
+    fun backgroundEnabled(): Boolean = prefs.getBoolean("bg_enabled", false)
+    fun setBackgroundEnabled(v: Boolean) = prefs.edit().putBoolean("bg_enabled", v).apply()
+
+    fun wakeWordRequired(): Boolean = prefs.getBoolean("wake_required", true)
+    fun setWakeWordRequired(v: Boolean) = prefs.edit().putBoolean("wake_required", v).apply()
+
     // ---------- app resolver ----------
     fun resolverThreshold(): Double = prefs.getFloat("resolver_threshold", 20.0f).toDouble()
     fun setResolverThreshold(v: Double) = prefs.edit().putFloat("resolver_threshold", v.toFloat()).apply()
