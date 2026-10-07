@@ -138,22 +138,23 @@ class SettingsActivity : AppCompatActivity() {
 
         // populate voices once the TTS engine is ready
         tts = TextToSpeech(this) { status ->
-            if (status != TextToSpeech.SUCCESS) return@TextToSpeech
-            val labels = mutableListOf(getString(R.string.voice_system_default))
-            val names = mutableListOf("")
-            tts?.voices?.sortedBy { it.locale.displayName }?.forEach { v ->
-                names.add(v.name); labels.add("${v.name} (${v.locale.displayName})")
-            }
-            spinnerVoice.adapter = ArrayAdapter(
-                this, android.R.layout.simple_spinner_dropdown_item, labels
-            )
-            val saved = memory.voiceName()
-            spinnerVoice.setSelection(names.indexOf(saved).takeIf { it >= 0 } ?: 0)
-            spinnerVoice.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
-                override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, id: Long) {
-                    memory.setVoiceName(names.getOrElse(pos) { "" })
+            if (status == TextToSpeech.SUCCESS) {
+                val labels = mutableListOf(getString(R.string.voice_system_default))
+                val names = mutableListOf("")
+                tts?.voices?.sortedBy { it.locale.displayName }?.forEach { v ->
+                    names.add(v.name); labels.add("${v.name} (${v.locale.displayName})")
                 }
-                override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                spinnerVoice.adapter = ArrayAdapter(
+                    this, android.R.layout.simple_spinner_dropdown_item, labels
+                )
+                val saved = memory.voiceName()
+                spinnerVoice.setSelection(names.indexOf(saved).takeIf { it >= 0 } ?: 0)
+                spinnerVoice.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+                    override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?, pos: Int, id: Long) {
+                        memory.setVoiceName(names.getOrElse(pos) { "" })
+                    }
+                    override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+                }
             }
         }
 

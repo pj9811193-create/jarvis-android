@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Base style. Dotted names like Jarvis.Section implicitly inherit from
+         "Jarvis", so this must exist even though it is empty. -->
+    <style name="Jarvis" />
+
     <style name="Jarvis.Section">
         <item name="android:layout_width">match_parent</item>
         <item name="android:layout_height">wrap_content</item>
