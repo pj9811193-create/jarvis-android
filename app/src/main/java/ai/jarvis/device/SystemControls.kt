@@ -58,18 +58,20 @@ class SystemControls(private val context: Context) {
     // ---------- flashlight ----------
     private var torchOn = false
 
-    fun flashlight(on: Boolean): String = try {
-        val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
-        val id = cm.cameraIdList.firstOrNull { camId ->
-            cm.getCameraCharacteristics(camId)
-                .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
-        } ?: return "There's no flashlight on this device, sir."
+    fun flashlight(on: Boolean): String {
+        return try {
+            val cm = context.getSystemService(Context.CAMERA_SERVICE) as CameraManager
+            val id = cm.cameraIdList.firstOrNull { camId ->
+                cm.getCameraCharacteristics(camId)
+                    .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+            } ?: return "There's no flashlight on this device, sir."
 
-        cm.setTorchMode(id, on)
-        torchOn = on
-        if (on) "Flashlight on." else "Flashlight off."
-    } catch (e: Exception) {
-        "I couldn't control the flashlight, sir."
+            cm.setTorchMode(id, on)
+            torchOn = on
+            if (on) "Flashlight on." else "Flashlight off."
+        } catch (e: Exception) {
+            "I couldn't control the flashlight, sir."
+        }
     }
 
     fun isTorchOn(): Boolean = torchOn

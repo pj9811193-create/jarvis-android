@@ -212,6 +212,58 @@ still work.
 
 ---
 
+## Feature coverage against the 100-item list
+
+### Working in this build
+
+**Core AI** — natural-language conversation · context-aware answers (rolling history)
+· short-term memory · personal preferences (system prompt) · multiple providers ·
+cloud AI · offline device skills with no key.
+
+**Voice** — "Jarvis" wake word · push-to-talk · multilingual recognition (set the
+language in Settings) · natural TTS · voice-speed control.
+
+**Phone control** — open apps · volume up/down/max/mute · flashlight on/off ·
+brightness up/down/max · battery level · Wi-Fi & Bluetooth panels.
+
+**Communication** — make calls (number *or* contact name) · find contacts ·
+SMS draft · WhatsApp draft · email draft · read notifications · summarise
+notifications with the AI.
+
+**Productivity** — timers · alarms · calendar events · notes · to-do list ·
+daily briefing (time, date, battery, notifications, tasks).
+
+**Internet** — web search · weather (no API key needed) · maps/search ·
+fact-checking and summaries via the AI.
+
+**Automation & access** — home-screen widget · Quick Settings tile ·
+lock-screen quick launch (widget) · Mission Control dashboard · ActionRegistry
+skill seam.
+
+### Deferred — needs more work, not blocked
+
+Camera vision (objects, text, QR, plants) needs CameraX + ML Kit. Screen
+intelligence / OCR / "read what's on screen" needs MediaProjection plus an
+Accessibility service. Streaming responses need SSE parsing. Local/offline AI
+needs a bundled model (e.g. MediaPipe LLM). Also not yet done: automatic model
+selection, voice authentication, noise filtering, recurring reminders, voice
+notes, multi-step command chaining, scheduled automations, routine learning,
+personal knowledge graph, agent mode, MCP, PC control, smart home, AR.
+
+### Not possible on Android — blocked by the OS, not by this code
+
+| Feature | Why |
+|---|---|
+| Toggle Wi-Fi / Bluetooth directly | Android 10+ removed this; apps may only open the panel. |
+| Close or force-stop other apps | No public API; only a device owner / rooted build could. |
+| Take a screenshot silently | Needs an Accessibility service or MediaProjection consent. |
+| Lock the screen | Needs Device Admin enrolment. |
+| Always-on mic without a foreground service | Android 11+ blocks background mic outright. |
+| Auto-start listening after reboot | Android 12+ forbids a microphone service starting from the background. |
+| Read notifications | Only with user-granted notification access (supported, and wired up). |
+
+---
+
 ## Build status
 
 Built and verified with a real Android toolchain:
