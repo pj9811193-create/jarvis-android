@@ -65,5 +65,11 @@
     <string name="bg_battery">For 24/7 reliability, allow JARVIS to ignore battery optimisation.</string>
     <string name="bg_battery_title">Keep JARVIS alive</string>
     <string name="bg_allow">Allow</string>
+
+    <!-- Mission Control / widget -->
+    <string name="mission_control">Mission Control</string>
+    <string name="mc_refresh">Refresh app index</string>
+    <string name="mc_close">Close</string>
+    <string name="widget_tap">Tap to talk</string>
     <string name="about_body">JARVIS discovers the apps installed on this device at runtime and matches them semantically — there is no hard-coded app list. The AI produces an intent and a target phrase; the AppResolver produces and verifies the package before anything is launched.</string>
 </resources>

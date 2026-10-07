@@ -76,6 +76,12 @@
             android:label="@string/settings"
             android:parentActivityName=".ui.MainActivity" />
 
+        <activity
+            android:name=".ui.MissionControlActivity"
+            android:exported="false"
+            android:label="@string/mission_control"
+            android:parentActivityName=".ui.MainActivity" />
+
         <!--
           The microphone foreground service. foregroundServiceType="microphone"
           is required on Android 14+; without it startForeground() is rejected.
@@ -85,6 +91,41 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="microphone" />
+
+        <!-- Reads notifications (user must grant notification access). -->
+        <service
+            android:name=".service.JarvisNotificationListener"
+            android:exported="false"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_NOTIFICATION_LISTENER_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.notification.NotificationListenerService" />
+            </intent-filter>
+        </service>
+
+        <!-- Quick Settings tile: start/stop background listening. -->
+        <service
+            android:name=".service.JarvisTileService"
+            android:exported="true"
+            android:icon="@drawable/ic_jarvis"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE" />
+            </intent-filter>
+        </service>
+
+        <!-- Home-screen widget. -->
+        <receiver
+            android:name=".widget.JarvisWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/jarvis_widget_info" />
+        </receiver>
 
         <receiver
             android:name=".service.BootReceiver"

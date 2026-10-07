@@ -86,6 +86,9 @@ class MainActivity : AppCompatActivity() {
         findViewById<Button>(R.id.settings).setOnClickListener {
             startActivity(Intent(this, SettingsActivity::class.java))
         }
+        findViewById<Button>(R.id.mission).setOnClickListener {
+            startActivity(Intent(this, MissionControlActivity::class.java))
+        }
         findViewById<Button>(R.id.bg_start).setOnClickListener { requestBackground() }
         findViewById<Button>(R.id.bg_stop).setOnClickListener { stopBackground() }
 
