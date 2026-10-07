@@ -131,17 +131,15 @@ map — with no edits to AppResolver or the UI.
 
 ---
 
-## Download the app (the link)
+## Install
 
-A browser page cannot enumerate installed apps — that needs the OS. So the link
-that gives **every** feature is the installable APK, built automatically by
-GitHub Actions on every push:
+A browser page cannot enumerate installed apps — that needs the OS. So the
+build that gives **every** feature is the APK, which ships with this project as
+`jarvis.apk`.
 
-**https://github.com/pj9811193-create/jarvis-android/releases/latest/download/app-debug.apk**
-
-Open that on your phone and install it (allow installs from your browser when
-asked). It is a debug-signed build, so it installs directly — no Play Store and
-no developer account needed.
+Copy it to your phone and open it. You'll be asked to allow installing from
+unknown sources — that's expected for any app not from the Play Store. It is
+debug-signed, so it installs directly with no developer account.
 
 The web page (https://pj9811193-create.github.io/jarvis/) still works for
 conversation and the offline skills, but it *cannot* open apps.
@@ -175,9 +173,21 @@ still work.
 
 ---
 
-## Not compiled here
+## Build status
 
-This source was written but **not compiled** in the environment that produced it
-(no Android SDK / Kotlin compiler available there). It is structured to build
-as-is in Android Studio; if your Gradle/AGP versions differ, update them in
-`build.gradle.kts` and `app/build.gradle.kts`.
+Built and verified with a real Android toolchain:
+
+```
+BUILD SUCCESSFUL
+app/build/outputs/apk/debug/app-debug.apk   5.5 MB
+package ai.jarvis · minSdk 24 · targetSdk 34 · compileSdk 34
+permissions: RECORD_AUDIO, INTERNET   (no QUERY_ALL_PACKAGES)
+signed with the Android debug certificate
+```
+
+Toolchain: JDK 17 (Temurin) · Gradle 8.7 · AGP 8.5.2 · Android SDK platform 34
++ build-tools 34.0.0.
+
+`gradle.properties` is tuned for a small build box (1 GB heap, in-process
+Kotlin compiler, no daemon). On a normal machine, raise `org.gradle.jvmargs`
+for much faster builds.
