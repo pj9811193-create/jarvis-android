@@ -131,6 +131,23 @@ map — with no edits to AppResolver or the UI.
 
 ---
 
+## Download the app (the link)
+
+A browser page cannot enumerate installed apps — that needs the OS. So the link
+that gives **every** feature is the installable APK, built automatically by
+GitHub Actions on every push:
+
+**https://github.com/pj9811193-create/jarvis-android/releases/latest/download/app-debug.apk**
+
+Open that on your phone and install it (allow installs from your browser when
+asked). It is a debug-signed build, so it installs directly — no Play Store and
+no developer account needed.
+
+The web page (https://pj9811193-create.github.io/jarvis/) still works for
+conversation and the offline skills, but it *cannot* open apps.
+
+---
+
 ## Build & run
 
 1. Open `jarvis-android` in **Android Studio** (Giraffe or newer), let it sync.
