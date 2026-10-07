@@ -12,7 +12,8 @@ import java.util.Locale
 /**
  * ============================  VOICE ENGINE  ============================
  * Speech -> text (SpeechRecognizer) and text -> speech (TextToSpeech).
- * Uses only on-device/system services; no extra SDK.
+ * Speed, voice and recognition language are driven from Settings via
+ * [applySettings]; the engine itself holds no settings of its own.
  * ======================================================================
  */
 class VoiceEngine(
@@ -25,6 +26,8 @@ class VoiceEngine(
             SpeechRecognizer.createSpeechRecognizer(context) else null
 
     private var tts: TextToSpeech? = null
+    private var ttsReady = false
+    private var langTag: String = Locale.getDefault().toLanguageTag()
 
     init {
         recognizer?.setRecognitionListener(object : RecognitionListener {
@@ -47,9 +50,29 @@ class VoiceEngine(
         })
 
         tts = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.getDefault()
+            ttsReady = status == TextToSpeech.SUCCESS
+            if (ttsReady) tts?.language = Locale.forLanguageTag(langTag)
+        }
+    }
+
+    fun isTtsReady(): Boolean = ttsReady
+
+    /** All voices the TTS engine offers, for the Settings picker. */
+    fun availableVoices(): List<Pair<String, String>> =
+        tts?.voices
+            ?.map { it.name to "${it.name} (${it.locale.displayName})" }
+            ?.sortedBy { it.second }
+            ?: emptyList()
+
+    /** Push the current Settings values into the engines. */
+    fun applySettings(speed: Float, voiceName: String, recognitionLang: String) {
+        if (recognitionLang.isNotBlank()) langTag = recognitionLang
+        tts?.let { engine ->
+            engine.setSpeechRate(speed.coerceIn(0.5f, 2.0f))
+            if (voiceName.isNotBlank()) {
+                engine.voices?.firstOrNull { it.name == voiceName }?.let { engine.voice = it }
             }
+            runCatching { engine.language = Locale.forLanguageTag(langTag) }
         }
     }
 
@@ -60,13 +83,14 @@ class VoiceEngine(
         }
         val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault())
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, langTag)
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
         }
         recognizer.startListening(intent)
     }
 
     fun speak(text: String) {
+        if (!ttsReady) return
         tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis")
     }
 

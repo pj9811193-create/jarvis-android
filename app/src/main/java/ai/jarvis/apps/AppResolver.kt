@@ -106,6 +106,49 @@ class AppResolver(private val context: Context) {
         return hits
     }
 
+    // ------------------------------------------------------------------
+    //  VERIFICATION — AppResolver is the ONLY source of package names.
+    //  The AI produces an intent + a target phrase; it never produces a
+    //  package, and nothing launches until it is verified here.
+    // ------------------------------------------------------------------
+
+    /** True only if the package is genuinely installed AND launchable. */
+    fun exists(packageName: String): Boolean =
+        pm.getLaunchIntentForPackage(packageName) != null ||
+            pm.getLeanbackLaunchIntentForPackage(packageName) != null
+
+    /**
+     * The [InstalledApp] for a package, but only if it is really present and
+     * launchable right now. Returns null for stale or forged package names, so
+     * a caller can never launch something that isn't actually installed.
+     */
+    fun verify(packageName: String): InstalledApp? =
+        inventory().firstOrNull { it.packageName == packageName && exists(it.packageName) }
+
+    /** Outcome of resolving a spoken target to a real installed app. */
+    sealed interface Resolution {
+        data class Resolved(val app: InstalledApp, val score: Double) : Resolution
+        data class Ambiguous(val options: List<Scored>) : Resolution
+        object NotFound : Resolution
+    }
+
+    /**
+     * Resolve a target phrase to an installed app.
+     * [threshold] is the minimum local score accepted without AI disambiguation.
+     */
+    fun resolve(target: String, threshold: Double = 20.0): Resolution {
+        val list = candidates(target, 8)
+        if (list.isEmpty()) return Resolution.NotFound
+        val top = list.first()
+        val runnerUp = list.getOrNull(1)
+        val close = runnerUp != null && (top.score - runnerUp.score) < 8.0
+        return if (top.score < threshold || (close && list.size > 1)) {
+            Resolution.Ambiguous(list)
+        } else {
+            Resolution.Resolved(top.app, top.score)
+        }
+    }
+
     data class Scored(val app: InstalledApp, val score: Double)
 
     companion object {

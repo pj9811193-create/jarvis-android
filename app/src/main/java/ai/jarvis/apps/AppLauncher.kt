@@ -13,6 +13,14 @@ import android.net.Uri
  */
 class AppLauncher(private val context: Context) {
 
+    /**
+     * Launch by package using the device's own launch intent.
+     *
+     * This is the FINAL GATE: if the package is not installed, or has no
+     * launchable activity, we return false and never call startActivity.
+     * Combined with AppResolver.verify(), nothing the AI could invent can ever
+     * reach the OS as a launch.
+     */
     fun launch(packageName: String): Boolean {
         val pm = context.packageManager
         val intent = pm.getLaunchIntentForPackage(packageName)

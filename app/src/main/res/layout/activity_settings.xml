@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="@color/jarvis_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="20dp">
+
+        <!-- ============ AI PROVIDER ============ -->
+        <TextView style="@style/Jarvis.Section" android:text="@string/sec_ai" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_provider" />
+        <Spinner
+            android:id="@+id/spinner_provider"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_api_key" />
+        <EditText
+            android:id="@+id/edit_key"
+            style="@style/Jarvis.Field"
+            android:hint="@string/hint_api_key"
+            android:inputType="textPassword" />
+        <TextView
+            style="@style/Jarvis.Hint"
+            android:text="@string/hint_key_secure" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_model" />
+        <EditText
+            android:id="@+id/edit_model"
+            style="@style/Jarvis.Field"
+            android:hint="llama-3.3-70b-versatile"
+            android:inputType="text" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_base_url" />
+        <EditText
+            android:id="@+id/edit_base"
+            style="@style/Jarvis.Field"
+            android:hint="https://api.groq.com/openai/v1"
+            android:inputType="textUri" />
+
+        <Button
+            android:id="@+id/btn_save_ai"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/btn_save_ai" />
+
+        <TextView
+            android:id="@+id/text_ai_status"
+            style="@style/Jarvis.Hint"
+            android:text="" />
+
+        <!-- ============ VOICE ============ -->
+        <TextView style="@style/Jarvis.Section" android:text="@string/sec_voice" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_speed" />
+        <SeekBar
+            android:id="@+id/seek_speed"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="15" />
+        <TextView android:id="@+id/text_speed" style="@style/Jarvis.Hint" android:text="" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_tts_voice" />
+        <Spinner
+            android:id="@+id/spinner_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_asr_lang" />
+        <EditText
+            android:id="@+id/edit_lang"
+            style="@style/Jarvis.Field"
+            android:hint="en-IN"
+            android:inputType="text" />
+
+        <Button
+            android:id="@+id/btn_test_voice"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/btn_test_voice" />
+
+        <!-- ============ APP RESOLVER ============ -->
+        <TextView style="@style/Jarvis.Section" android:text="@string/sec_resolver" />
+
+        <TextView android:id="@+id/text_index" style="@style/Jarvis.Hint" android:text="" />
+        <Button
+            android:id="@+id/btn_refresh_index"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_refresh_index" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_threshold" />
+        <SeekBar
+            android:id="@+id/seek_threshold"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:max="60" />
+        <TextView android:id="@+id/text_threshold" style="@style/Jarvis.Hint" android:text="" />
+
+        <TextView style="@style/Jarvis.Label" android:text="@string/lbl_aliases" />
+        <TextView android:id="@+id/text_aliases_empty" style="@style/Jarvis.Hint" android:text="@string/aliases_none" />
+        <LinearLayout
+            android:id="@+id/container_aliases"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical" />
+        <Button
+            android:id="@+id/btn_clear_aliases"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/btn_clear_aliases" />
+
+        <!-- ============ PERMISSIONS ============ -->
+        <TextView style="@style/Jarvis.Section" android:text="@string/sec_permissions" />
+        <TextView android:id="@+id/text_mic_status" style="@style/Jarvis.Hint" android:text="" />
+        <Button
+            android:id="@+id/btn_grant_mic"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="@string/btn_grant_mic" />
+
+        <!-- ============ ABOUT ============ -->
+        <TextView style="@style/Jarvis.Section" android:text="@string/sec_about" />
+        <TextView android:id="@+id/text_about" style="@style/Jarvis.Hint" android:text="@string/about_body" />
+    </LinearLayout>
+</ScrollView>

@@ -5,4 +5,51 @@
     <string name="mic">Mic</string>
     <string name="send">Send</string>
     <string name="refresh">Rescan installed apps</string>
+    <string name="settings">Settings</string>
+
+    <!-- Settings sections -->
+    <string name="sec_ai">AI PROVIDER</string>
+    <string name="sec_voice">VOICE</string>
+    <string name="sec_resolver">APP RESOLVER</string>
+    <string name="sec_permissions">PERMISSIONS</string>
+    <string name="sec_about">ABOUT</string>
+
+    <!-- AI provider -->
+    <string name="lbl_provider">Provider</string>
+    <string name="lbl_api_key">API key</string>
+    <string name="hint_api_key">paste your key</string>
+    <string name="hint_key_secure">Stored encrypted via the Android Keystore — never in plain preferences.</string>
+    <string name="lbl_model">Model</string>
+    <string name="lbl_base_url">Base URL</string>
+    <string name="btn_save_ai">Save AI settings</string>
+    <string name="ai_status_none">No key set — offline mode (apps, time, maths still work).</string>
+    <string name="ai_status_set">Key stored. Conversation + semantic app matching enabled.</string>
+
+    <!-- Voice -->
+    <string name="lbl_speed">Speech speed</string>
+    <string name="lbl_tts_voice">Speaking voice</string>
+    <string name="lbl_asr_lang">Speech recognition language (BCP-47, e.g. en-IN)</string>
+    <string name="btn_test_voice">Test voice</string>
+    <string name="voice_system_default">System default</string>
+    <string name="voice_sample">All systems nominal, sir.</string>
+
+    <!-- Resolver -->
+    <string name="index_count">Indexed %1$d launchable apps.</string>
+    <string name="btn_refresh_index">Refresh app index</string>
+    <string name="lbl_threshold">Match confidence threshold</string>
+    <string name="threshold_value">%1$d — higher means JARVIS asks the AI to disambiguate more often.</string>
+    <string name="lbl_aliases">Learned aliases</string>
+    <string name="aliases_none">Nothing learned yet. Say "open my video editor" and JARVIS will remember it.</string>
+    <string name="btn_clear_aliases">Clear all aliases</string>
+    <string name="aliases_cleared">Aliases cleared.</string>
+    <string name="rescanned">App index refreshed.</string>
+
+    <!-- Permissions -->
+    <string name="mic_granted">Microphone: granted.</string>
+    <string name="mic_denied">Microphone: not granted — voice input is unavailable.</string>
+    <string name="btn_grant_mic">Grant microphone</string>
+
+    <!-- About -->
+    <string name="saved">Saved</string>
+    <string name="about_body">JARVIS discovers the apps installed on this device at runtime and matches them semantically — there is no hard-coded app list. The AI produces an intent and a target phrase; the AppResolver produces and verifies the package before anything is launched.</string>
 </resources>
