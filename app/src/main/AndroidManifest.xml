@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <!--
+      ============================ PACKAGE VISIBILITY ============================
+      Android 11 (API 30) and above filter what an app can see about other
+      installed apps. Declaring the MAIN/LAUNCHER intent below makes every app
+      that has a launcher activity visible to us — which is exactly the set we
+      need to build an "installed apps" inventory.
+
+      This is the narrow, Play-Store-friendly approach. The blunt alternative is
+        <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"/>
+      but Google restricts that permission to specific app categories (launchers,
+      antivirus, file managers, ...) and will reject unrelated apps that request it.
+
+      Note: this grants *visibility*, not control. Launching another app is fine;
+      performing actions *inside* it still requires that app to expose an Intent,
+      a deep link, or an accessibility service.
+      ============================================================================
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.speech.RecognitionService" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".JarvisApp"
+        android:allowBackup="true"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Jarvis">
+
+        <activity
+            android:name=".ui.MainActivity"
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
