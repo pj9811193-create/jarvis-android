@@ -7,10 +7,14 @@ decides the final package.**
 
 ## The trust chain
 
+**There are no rule-based commands.** Every utterance goes to the model; the
+model returns a structured intent; the resolver turns that into a real, verified
+package. Nothing is matched by regex.
+
 ```
 User
  ↓  "Open my video editor"
-IntentParser / AIEngine.classify
+AIEngine.classify  →  IntentResolver
  ↓  Intent: OPEN_APP   target = "video editor"     ← a PHRASE, never a package
 AppResolver
  ↓  installed-app inventory (from PackageManager)
@@ -20,6 +24,10 @@ AppResolver
 ActionRegistry → AppLauncher
  ↓  Android OS
 ```
+
+**Cost of dropping the rules, stated plainly:** an API key is now required for
+every request, and each one costs at least one model round-trip. In exchange the
+assistant understands phrasing nobody wrote a rule for.
 
 The rule this enforces:
 
@@ -42,7 +50,8 @@ The rule this enforces:
 |---|---|---|
 | **VoiceEngine** | `voice/VoiceEngine.kt` | speech ↔ text; speed / voice / language from Settings |
 | **AIEngine** | `ai/AIEngine.kt` | conversation, intent classification, candidate *choice by index* |
-| **IntentParser** | `nlp/IntentParser.kt` | offline detection of device verbs |
+| **IntentResolver** | `nlp/IntentResolver.kt` | maps the model's intent onto a device command |
+| **DeviceCommand** | `nlp/DeviceCommand.kt` | the command types (now AI-produced) |
 | **AppResolver** | `apps/AppResolver.kt` | **discovers, ranks and verifies installed apps** |
 | **ActionRegistry** | `actions/ActionRegistry.kt` | *how* to act on a resolved app (launch today; deep links next) |
 | **AppLauncher** | `apps/AppLauncher.kt` | final gate + store fallback |

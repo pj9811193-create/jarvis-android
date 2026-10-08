@@ -42,7 +42,7 @@ class AIEngine(private val memory: Memory) {
 
     suspend fun ask(userText: String, deviceContext: String = ""): String {
         val messages = JSONArray()
-            .put(msg("system", withContext(system())))
+            .put(msg("system", augment(SYSTEM_PROMPT, deviceContext)))
             .put(msg("user", userText))
         return call(messages, 400) ?: "I couldn't reach the AI just now."
     }
@@ -50,7 +50,7 @@ class AIEngine(private val memory: Memory) {
     /** Classify a request into an action + fields. */
     suspend fun classify(text: String, deviceContext: String = ""): AiIntent? {
         val messages = JSONArray()
-            .put(msg("system", CLASSIFIER_PROMPT + withContext(system(), deviceContext)))
+            .put(msg("system", augment(CLASSIFIER_PROMPT, deviceContext)))
             .put(msg("user", text))
         val raw = call(messages, 160) ?: return null
         return try {
@@ -90,8 +90,8 @@ class AIEngine(private val memory: Memory) {
         return if (n in 1..candidates.size) n else 0
     }
 
-    private fun system(): String = SYSTEM_PROMPT
-    private fun withContext(base: String, deviceContext: String): String =
+    /** Append live device facts (time, date, battery) so the model needs no rules. */
+    private fun augment(base: String, deviceContext: String): String =
         if (deviceContext.isBlank()) base else "$base\n\nCurrent device context:\n$deviceContext"
 
     private fun msg(role: String, content: String) =
