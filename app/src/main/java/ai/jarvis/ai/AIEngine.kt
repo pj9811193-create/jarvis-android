@@ -1,6 +1,8 @@
 package ai.jarvis.ai
 
 import ai.jarvis.memory.Memory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import java.net.HttpURLConnection
@@ -10,42 +12,62 @@ import java.net.URL
  * ============================  AI ENGINE  ============================
  * Talks to any OpenAI-compatible endpoint (Groq, Gemini-compat, OpenAI, …).
  *
- * IMPORTANT — the AI never decides a package name. It can only:
- *   • classify(text)        → an intent (OPEN_APP / WEB_SEARCH / …) + a target
- *                             *phrase*, never a package
- *   • chooseCandidate(...)  → a NUMBER, indexing into the candidate list that
- *                             AppResolver already produced and verified
- *   • ask(text)             → ordinary conversation
+ * It is the ONLY interpreter of user intent — there is no rule-based parser.
+ *   • classify()       → an action + fields (a target PHRASE, never a package)
+ *   • chooseCandidate()→ a NUMBER indexing the resolver's verified shortlist
+ *   • ask()            → ordinary conversation
  *
- * The package name is always produced by AppResolver, from the real installed
- * inventory. See the trust chain in the README.
+ * All calls are suspend and run on Dispatchers.IO. (Earlier versions called
+ * this on the main thread, which Android rejects with
+ * NetworkOnMainThreadException — caught and swallowed, so the AI silently
+ * failed. That is fixed here.)
  * ====================================================================
  */
 class AIEngine(private val memory: Memory) {
 
-    /** An intent classified from free text. `target` is a phrase, not a package. */
-    data class AiIntent(val action: String, val target: String)
+    /** A structured intent produced by the model. `target` is a phrase, not a package. */
+    data class AiIntent(
+        val action: String,
+        val target: String = "",
+        val channel: String = "",
+        val body: String = "",
+        val kind: String = "",
+        val url: String = "",
+        val seconds: Long = 0L,
+        val hour: Int = -1,
+        val minute: Int = -1
+    )
 
     fun isConfigured(): Boolean = memory.apiKey().isNotBlank()
 
-    fun ask(userText: String): String {
+    suspend fun ask(userText: String, deviceContext: String = ""): String {
         val messages = JSONArray()
-            .put(msg("system", SYSTEM_PROMPT))
+            .put(msg("system", withContext(system())))
             .put(msg("user", userText))
         return call(messages, 400) ?: "I couldn't reach the AI just now."
     }
 
-    /** Classify a request into an action + target phrase. */
-    fun classify(text: String): AiIntent? {
+    /** Classify a request into an action + fields. */
+    suspend fun classify(text: String, deviceContext: String = ""): AiIntent? {
         val messages = JSONArray()
-            .put(msg("system", CLASSIFIER_PROMPT))
+            .put(msg("system", CLASSIFIER_PROMPT + withContext(system(), deviceContext)))
             .put(msg("user", text))
-        val raw = call(messages, 60) ?: return null
+        val raw = call(messages, 160) ?: return null
         return try {
-            val json = JSONObject(jsonSlice(raw))
-            val action = json.optString("action").uppercase().trim()
-            val target = json.optString("target").trim()
-            if (action.isEmpty()) null else AiIntent(action, target)
+            val j = JSONObject(jsonSlice(raw))
+            val action = j.optString("action").uppercase().trim()
+            if (action.isEmpty()) return null
+            AiIntent(
+                action = action,
+                target = j.optString("target").trim(),
+                channel = j.optString("channel").trim().lowercase(),
+                body = j.optString("body").trim(),
+                kind = j.optString("kind").trim().lowercase(),
+                url = j.optString("url").trim(),
+                seconds = j.optLong("seconds", 0L),
+                hour = j.optInt("hour", -1),
+                minute = j.optInt("minute", -1)
+            )
         } catch (e: Exception) {
             null
         }
@@ -53,12 +75,11 @@ class AIEngine(private val memory: Memory) {
 
     /**
      * Choose ONE of the supplied candidates.
-     * Returns a 1-based index, or 0 for "none fit", or null on failure.
-     *
-     * The model only ever sees labels and returns a number, so it cannot invent
-     * or hallucinate a package — the caller indexes into its own verified list.
+     * Returns a 1-based index, 0 for "none fit", or null on failure.
+     * The model sees labels only and returns a number, so it cannot invent a
+     * package — the caller indexes into its own verified list.
      */
-    fun chooseCandidate(query: String, candidates: List<String>): Int? {
+    suspend fun chooseCandidate(query: String, candidates: List<String>): Int? {
         if (candidates.isEmpty()) return null
         val numbered = candidates.mapIndexed { i, label -> "${i + 1}. $label" }.joinToString("\n")
         val messages = JSONArray()
@@ -68,6 +89,10 @@ class AIEngine(private val memory: Memory) {
         val n = Regex("\\d+").find(raw)?.value?.toIntOrNull() ?: return null
         return if (n in 1..candidates.size) n else 0
     }
+
+    private fun system(): String = SYSTEM_PROMPT
+    private fun withContext(base: String, deviceContext: String): String =
+        if (deviceContext.isBlank()) base else "$base\n\nCurrent device context:\n$deviceContext"
 
     private fun msg(role: String, content: String) =
         JSONObject().put("role", role).put("content", content)
@@ -80,42 +105,43 @@ class AIEngine(private val memory: Memory) {
     }
 
     /** Returns the assistant text, or null on any failure. */
-    private fun call(messages: JSONArray, maxTokens: Int): String? {
-        val base = memory.baseUrl().ifBlank { "https://api.groq.com/openai/v1" }
-        val model = memory.model().ifBlank { "llama-3.3-70b-versatile" }
-        val body = JSONObject()
-            .put("model", model)
-            .put("messages", messages)
-            .put("max_tokens", maxTokens)
-            .put("temperature", 0.2)
-            .toString()
+    private suspend fun call(messages: JSONArray, maxTokens: Int): String? =
+        withContext(Dispatchers.IO) {
+            val base = memory.baseUrl().ifBlank { "https://api.groq.com/openai/v1" }
+            val model = memory.model().ifBlank { "llama-3.3-70b-versatile" }
+            val body = JSONObject()
+                .put("model", model)
+                .put("messages", messages)
+                .put("max_tokens", maxTokens)
+                .put("temperature", 0.2)
+                .toString()
 
-        return try {
-            val conn = (URL(base.trimEnd('/') + "/chat/completions").openConnection() as HttpURLConnection).apply {
-                requestMethod = "POST"
-                connectTimeout = 15_000
-                readTimeout = 30_000
-                doOutput = true
-                setRequestProperty("Content-Type", "application/json")
-                setRequestProperty("Authorization", "Bearer " + memory.apiKey())
+            try {
+                val conn = (URL(base.trimEnd('/') + "/chat/completions").openConnection() as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 15_000
+                    readTimeout = 30_000
+                    doOutput = true
+                    setRequestProperty("Content-Type", "application/json")
+                    setRequestProperty("Authorization", "Bearer " + memory.apiKey())
+                }
+                conn.outputStream.use { it.write(body.toByteArray()) }
+
+                val code = conn.responseCode
+                val stream = if (code in 200..299) conn.inputStream else conn.errorStream
+                val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
+                if (code !in 200..299) return@withContext null
+
+                JSONObject(text)
+                    .getJSONArray("choices")
+                    .getJSONObject(0)
+                    .getJSONObject("message")
+                    .getString("content")
+                    .trim()
+            } catch (e: Exception) {
+                null
             }
-            conn.outputStream.use { it.write(body.toByteArray()) }
-
-            val code = conn.responseCode
-            val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-            val text = stream?.bufferedReader()?.use { it.readText() } ?: ""
-            if (code !in 200..299) return null
-
-            JSONObject(text)
-                .getJSONArray("choices")
-                .getJSONObject(0)
-                .getJSONObject("message")
-                .getString("content")
-                .trim()
-        } catch (e: Exception) {
-            null
         }
-    }
 
     companion object {
         const val SYSTEM_PROMPT =
@@ -124,28 +150,52 @@ class AIEngine(private val memory: Memory) {
                 "Address the user as 'sir' occasionally."
 
         /**
-         * The classifier must emit intent + a target PHRASE. It must never emit
-         * a package name — it has no idea what is installed, and we do not trust
-         * it to guess.
+         * The whole intent vocabulary. The model — not a regex table — decides
+         * which action fits, and fills only that action's fields.
          */
-        const val CLASSIFIER_PROMPT =
-            "Classify the user's request for an Android assistant. Reply with ONLY compact JSON, " +
-                "no prose, in this exact shape:\n" +
-                "{\"action\":\"OPEN_APP\",\"target\":\"video editor\"}\n" +
-                "action is one of: OPEN_APP, WEB_SEARCH, INSTALL_APP, CALL, ANSWER.\n" +
-                "Use OPEN_APP when the user wants to open/launch an app; target is the phrase they " +
-                "used to describe it (e.g. \"my video editor\", \"the app I use for coding\").\n" +
-                "Use WEB_SEARCH when they want to search the web (target = the query).\n" +
-                "Use INSTALL_APP when they want to install/download something.\n" +
-                "Use CALL when they want to phone someone; target is the phone number or the " +
-                "contact name they said (e.g. \"+91 98765 43210\", \"mom\").\n" +
-                "Use ANSWER for everything else (target = the question).\n" +
-                "NEVER output a package name — only a plain-language target."
+        val CLASSIFIER_PROMPT = """
+            You convert a spoken request into ONE JSON object for an Android assistant.
+            Reply with ONLY compact JSON. No prose, no markdown, no code fences.
 
-        /**
-         * The chooser picks a NUMBER from a list we supply. That is the whole
-         * safety property: it cannot name something that isn't in the list.
-         */
+            Pick exactly one "action" and fill only the fields that action needs:
+
+            OPEN_APP                 target = the app as the user described it
+            WEB_SEARCH               target = the search query
+            INSTALL_APP              target = the app to install
+            OPEN_URL                 url = the full URL
+            CALL                     target = a phone number or a contact name
+            SEND_MESSAGE             channel = sms|whatsapp|email, target = recipient, body = the message
+            SET_TIMER                seconds = integer seconds
+            SET_ALARM                hour = 0-23, minute = 0-59
+            ADD_EVENT                target = the event title
+            SAVE_NOTE                body = the note text
+            ADD_TODO                 body = the task text
+            READ_LIST                kind = notes|todos
+            WEATHER                  target = city, or "" for the current location
+            READ_NOTIFICATIONS       (no fields)
+            SUMMARIZE_NOTIFICATIONS  (no fields)
+            SYSTEM                   kind = volume_up|volume_down|volume_max|mute|unmute|flashlight_on|flashlight_off|brightness_up|brightness_down|brightness_max|wifi|bluetooth|battery|briefing|mission_control
+            ANSWER                   target = the user's question, when it is conversation rather than a device action
+
+            Rules:
+            - Use ANSWER for anything that is not a device action.
+            - Convert times to 24-hour integers: "7pm" -> hour 19, minute 0.
+            - Convert durations to seconds: "10 minutes" -> 600.
+            - NEVER output a package name. OPEN_APP takes a plain-language target.
+
+            Examples:
+            "open insta"           -> {"action":"OPEN_APP","target":"instagram"}
+            "open my video editor" -> {"action":"OPEN_APP","target":"my video editor"}
+            "call mom"             -> {"action":"CALL","target":"mom"}
+            "text priya I'm late"  -> {"action":"SEND_MESSAGE","channel":"sms","target":"priya","body":"I'm late"}
+            "timer for 10 minutes" -> {"action":"SET_TIMER","seconds":600}
+            "alarm at 7pm"         -> {"action":"SET_ALARM","hour":19,"minute":0}
+            "turn on the torch"    -> {"action":"SYSTEM","kind":"flashlight_on"}
+            "note that milk is out"-> {"action":"SAVE_NOTE","body":"milk is out"}
+            "what's the weather in Patna" -> {"action":"WEATHER","target":"Patna"}
+            "what's 47 times 19"   -> {"action":"ANSWER","target":"what's 47 times 19"}
+        """.trimIndent()
+
         const val CHOOSER_PROMPT =
             "You are choosing which INSTALLED app matches the user's request. " +
                 "Reply with ONLY the number of the best candidate, or 0 if none fit. " +

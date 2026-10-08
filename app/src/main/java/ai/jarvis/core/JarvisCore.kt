@@ -9,7 +9,6 @@ import ai.jarvis.apps.AppLauncher
 import ai.jarvis.apps.AppResolver
 import ai.jarvis.apps.InstalledApp
 import ai.jarvis.device.Caller
-import ai.jarvis.device.DeviceTools
 import ai.jarvis.device.Messaging
 import ai.jarvis.device.NotesStore
 import ai.jarvis.device.Scheduler
@@ -17,7 +16,7 @@ import ai.jarvis.device.SystemControls
 import ai.jarvis.device.Weather
 import ai.jarvis.memory.Memory
 import ai.jarvis.nlp.DeviceCommand
-import ai.jarvis.nlp.IntentParser
+import ai.jarvis.nlp.IntentResolver
 import ai.jarvis.service.JarvisNotificationListener
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -29,12 +28,17 @@ import java.util.Locale
  * ============================  JARVIS CORE  ============================
  * The decision pipeline, shared by the UI and the background service.
  *
- *   text → IntentParser / AI.classify   (intent + target PHRASE)
- *        → AppResolver                   (installed inventory → package)
- *        → AppResolver.verify            (package really exists?)
- *        → ActionRegistry → AppLauncher  (OS)
+ * There are NO rule-based commands. Every utterance goes to the model, which
+ * returns a structured intent (see AIEngine.CLASSIFIER_PROMPT); IntentResolver
+ * maps that onto a DeviceCommand; the trust chain still applies:
  *
- * The AI never hands a package to the launcher.
+ *   text → AI.classify → IntentResolver   (action + target PHRASE)
+ *        → AppResolver                     (installed inventory → package)
+ *        → AppResolver.verify              (package really exists?)
+ *        → ActionRegistry → AppLauncher    (OS)
+ *
+ * Consequence, stated plainly: an API key is now required for everything, and
+ * each request costs at least one model round-trip.
  * =====================================================================
  */
 class JarvisCore(context: Context) {
@@ -45,9 +49,8 @@ class JarvisCore(context: Context) {
     private val resolver = AppResolver(app)
     private val launcher = AppLauncher(app)
     private val actions = ActionRegistry(launcher)
-    private val parser = IntentParser()
-    private val device = DeviceTools(app)
     private val ai = AIEngine(memory)
+    private val intents = IntentResolver(ai)
     private val caller = Caller(app)
 
     private val system = SystemControls(app)
@@ -61,30 +64,25 @@ class JarvisCore(context: Context) {
     fun aiConfigured(): Boolean = ai.isConfigured()
 
     suspend fun handle(text: String): String {
-        // 1) deterministic device verbs — no AI, no network, no latency
-        parser.parse(text)?.let { return execute(it) }
-
-        // 2) AI classifies intent + target PHRASE (never a package)
-        if (ai.isConfigured()) {
-            val intent = ai.classify(text)
-            if (intent != null && intent.action != "ANSWER" && intent.target.isNotBlank()) {
-                val cmd = when (intent.action) {
-                    "OPEN_APP" -> DeviceCommand.OpenApp(intent.target)
-                    "WEB_SEARCH" -> DeviceCommand.WebSearch(intent.target)
-                    "INSTALL_APP" -> DeviceCommand.InstallApp(intent.target)
-                    "CALL" -> DeviceCommand.CallNumber(intent.target)
-                    else -> null
-                }
-                if (cmd != null) return execute(cmd)
-            }
+        if (!ai.isConfigured()) {
+            return "I need an AI key now, sir — there are no rule-based commands any more, so " +
+                "everything goes through the model. Add one in Settings."
         }
 
-        // 3) offline device skills
-        device.answer(text)?.let { return it }
+        val context = deviceContext()
 
-        // 4) ordinary conversation
-        if (ai.isConfigured()) return ai.ask(text)
-        return "I don't have an AI key yet, so I can only run device commands. Add a key in Settings for conversation."
+        // The model decides: device action, or conversation?
+        intents.resolve(text, context)?.let { return execute(it) }
+        return ai.ask(text, context)
+    }
+
+    /** Live facts the model can use, so no rule is needed for time/date/battery. */
+    private fun deviceContext(): String {
+        val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
+        val date = SimpleDateFormat("EEEE, d MMMM yyyy", Locale.getDefault()).format(Date())
+        val battery = system.battery()
+        val tasks = notes.todos()
+        return "time=$time; date=$date; $battery; $tasks"
     }
 
     private suspend fun execute(cmd: DeviceCommand): String = when (cmd) {
@@ -154,7 +152,7 @@ class JarvisCore(context: Context) {
         val items = JarvisNotificationListener.recent(10)
         if (items.isEmpty()) return "No notifications right now, sir."
 
-        if (summarize && ai.isConfigured()) {
+        if (summarize) {
             val joined = items.joinToString("\n")
             return ai.ask("Summarise these phone notifications in one short paragraph:\n$joined")
         }
@@ -165,17 +163,15 @@ class JarvisCore(context: Context) {
     private fun briefing(): String {
         val time = SimpleDateFormat("h:mm a", Locale.getDefault()).format(Date())
         val date = SimpleDateFormat("EEEE, d MMMM", Locale.getDefault()).format(Date())
-        val battery = system.battery()
-        val todos = notes.todos()
         val notifCount = if (JarvisNotificationListener.isEnabled(app))
             JarvisNotificationListener.recent(25).size else 0
 
         return buildString {
             append("Good day, sir. It's $time on $date. ")
-            append("$battery ")
+            append(system.battery() + " ")
             if (notifCount > 0) append("You have $notifCount recent notifications. ")
             else append("No new notifications. ")
-            append(todos)
+            append(notes.todos())
         }
     }
 
@@ -192,38 +188,38 @@ class JarvisCore(context: Context) {
     // ---------------- app resolution (trust chain) ----------------
 
     private suspend fun resolveAndLaunch(target: String): String {
+        // 1) a learned alias, verified before it is trusted
         memory.lookup(target)?.let { pkg ->
-            val app = resolveVerified(pkg)
+            val app = resolver.verify(pkg)
             if (app != null && actions.perform(app)) return "Opening ${app.label}."
             memory.forget(target)
         }
 
-        val threshold = memory.resolverThreshold()
-        return when (val res = withContext(Dispatchers.IO) { resolver.resolve(target, threshold) }) {
+        // 2) an exact label hit is a lookup, not a rule — no second model call
+        val inventory = withContext(Dispatchers.IO) { resolver.inventory() }
+        inventory.firstOrNull { it.label.equals(target.trim(), ignoreCase = true) }
+            ?.let { return launchVerified(it, target) }
 
-            is AppResolver.Resolution.NotFound -> {
-                launcher.searchStore(target)
-                "Nothing installed matches \"$target\", so I'm opening the app store."
-            }
+        // 3) otherwise the model picks from a shortlist the resolver built
+        val candidates = withContext(Dispatchers.IO) { resolver.candidates(target, 8) }
+        if (candidates.isEmpty()) {
+            launcher.searchStore(target)
+            return "Nothing installed matches \"$target\", so I'm opening the app store."
+        }
 
-            is AppResolver.Resolution.Resolved -> launchVerified(res.app, target)
-
-            is AppResolver.Resolution.Ambiguous -> {
-                var chosen = res.options.first().app
-                if (ai.isConfigured()) {
-                    when (val idx = ai.chooseCandidate(target, res.options.map { it.app.label })) {
-                        0 -> return "I couldn't find an installed app for \"$target\"."
-                        null -> Unit
-                        else -> chosen = res.options[idx - 1].app
-                    }
+        var chosen = candidates.first().app
+        if (candidates.size > 1) {
+            when (val idx = ai.chooseCandidate(target, candidates.map { it.app.label })) {
+                0 -> {
+                    launcher.searchStore(target)
+                    return "I couldn't find an installed app for \"$target\"."
                 }
-                launchVerified(chosen, target)
+                null -> Unit                    // model failed; keep the local best
+                else -> chosen = candidates[idx - 1].app
             }
         }
+        return launchVerified(chosen, target)
     }
-
-    private fun resolveVerified(packageName: String): InstalledApp? =
-        resolver.verify(packageName)
 
     private fun launchVerified(app: InstalledApp, target: String): String {
         val verified = resolver.verify(app.packageName)
